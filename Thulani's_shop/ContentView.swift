@@ -12,13 +12,13 @@ struct ScoreRecord: Identifiable {
     let id = UUID()
     let mode: String
     let score: Int
-    let time: Int // seconds
+    let time: Int
     let date: Date
 }
 
 class ScoreManager: ObservableObject {
     @Published var history: [ScoreRecord] = []
-    
+
     func add(mode: String, score: Int, time: Int) {
         history.insert(
             ScoreRecord(mode: mode, score: score, time: time, date: Date()),
@@ -27,74 +27,61 @@ class ScoreManager: ObservableObject {
     }
 }
 
-// MARK: - Main Menu with TabView
+// MARK: - MAIN APP
 struct ContentView: View {
     @StateObject var scoreManager = ScoreManager()
-    
+
     var body: some View {
         TabView {
             NavigationStack {
-                VStack(spacing: 40) {
-                    Spacer()
-                    Text("🎨 Color Cube Matching Game")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .multilineTextAlignment(.center)
-                    
-                    VStack(spacing: 20) {
-                        NavigationLink("Easy") {
-                            EasyGameView(scoreManager: scoreManager)
+                ZStack {
+                    // 🎨 Main Menu Background
+                    LinearGradient(
+                        colors: [Color.purple.opacity(0.5), Color.blue.opacity(0.3)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .ignoresSafeArea()
+
+                    VStack(spacing: 30) {
+                        Spacer()
+                        Text("🎨 Color Cube Matching Game")
+                            .font(.largeTitle.bold())
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.white)
+                            .shadow(radius: 5)
+
+                        VStack(spacing: 18) {
+                            NavigationLink("Easy") { EasyGameView(scoreManager: scoreManager) }
+                            NavigationLink("Medium") { MediumGameView(scoreManager: scoreManager) }
+                            NavigationLink("Hard") { HardGameView(scoreManager: scoreManager) }
+                            NavigationLink("📘 How to Play") { InstructionsView() }
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
-                        
-                        NavigationLink("Medium") {
-                            MediumGameView(scoreManager: scoreManager)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        
-                        NavigationLink("Hard") {
-                            HardGameView(scoreManager: scoreManager)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        
-                        NavigationLink("📘 How to Play") {
-                            InstructionsView()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
+                        Spacer()
                     }
-                    Spacer()
+                    .padding()
                 }
-                .padding()
             }
-            .tabItem {
-                Label("Play", systemImage: "gamecontroller")
-            }
-            
-            NavigationStack {
-                ScoreHistoryView(scoreManager: scoreManager)
-            }
-            .tabItem {
-                Label("History", systemImage: "list.bullet.rectangle")
-            }
+            .tabItem { Label("Play", systemImage: "gamecontroller") }
+
+            NavigationStack { ScoreHistoryView(scoreManager: scoreManager) }
+                .tabItem { Label("History", systemImage: "list.bullet.rectangle") }
         }
     }
 }
 
-// MARK: - Score History View
+// MARK: - SCORE HISTORY VIEW
 struct ScoreHistoryView: View {
     @ObservedObject var scoreManager: ScoreManager
-    
+
     var body: some View {
         VStack {
             Text("🏆 Score History")
-                .font(.largeTitle)
-                .fontWeight(.bold)
+                .font(.largeTitle.bold())
                 .padding()
-            
+
             if scoreManager.history.isEmpty {
                 Text("No scores yet. Play a game first!")
                     .font(.title3)
@@ -114,368 +101,353 @@ struct ScoreHistoryView: View {
     }
 }
 
-// MARK: - Easy Game 2x2
+// MARK: - REUSABLE CARD VIEW
+struct GameCardView: View {
+    let color: Color
+    let flipped: Bool
+    let height: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 12)
+            .fill(flipped ? color : .white)
+            .shadow(radius: 3)
+            .frame(height: height)
+            .rotation3DEffect(
+                .degrees(flipped ? 0 : 180),
+                axis: (x: 0, y: 1, z: 0)
+            )
+            .animation(.easeInOut(duration: 0.35), value: flipped)
+    }
+}
+
+// MARK: - EASY GAME 3x3
 struct EasyGameView: View {
-    let colors: [Color] = [.red, .blue]
+    let colors: [Color] = [.red, .blue, .green, .yellow]
+
     @State private var colorIndexes: [Int] = []
-    @State private var revealed = Array(repeating: false, count: 4)
-    @State private var matched = Array(repeating: false, count: 4)
+    @State private var revealed = Array(repeating: false, count: 9)
+    @State private var matched = Array(repeating: false, count: 9)
     @State private var firstIndex: Int? = nil
     @State private var secondIndex: Int? = nil
     @State private var isBusy = false
-    @State private var statusText = "Match the Colors"
+
     @State private var score = 0
-    
     @State private var time = 0
-    @State private var timer: Timer? = nil
-    
+    @State private var timer: Timer?
+    @State private var hintUsed = false
+    @State private var showWin = false
+
     @ObservedObject var scoreManager: ScoreManager
-    
+
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Score: \(score)").font(.title3).fontWeight(.bold)
-            Text("Time: \(time)s").font(.headline)
-            Text(statusText).font(.title2).fontWeight(.semibold)
-            
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 10) {
-                ForEach(0..<4, id: \.self) { index in
-                    Rectangle()
-                        .fill(cardColor(index))
-                        .frame(height: 80)
-                        .cornerRadius(10)
-                        .onTapGesture { cardTapped(index) }
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.black))
-                }
-            }
-            
-            Button("Restart Game") { setupGame() }
-        }
-        .padding()
-        .onAppear { setupGame() }
-        .onDisappear { timer?.invalidate() }
+        GameView(
+            title: "Easy Mode",
+            grid: 3,
+            totalCards: 9,
+            pairCount: 4,
+            scoreValue: 10,
+            colors: colors,
+            colorIndexes: $colorIndexes,
+            revealed: $revealed,
+            matched: $matched,
+            firstIndex: $firstIndex,
+            secondIndex: $secondIndex,
+            busy: $isBusy,
+            score: $score,
+            time: $time,
+            hintUsed: $hintUsed,
+            timer: $timer,
+            showWin: $showWin,
+            scoreManager: scoreManager
+        )
     }
-    
-    func setupGame() {
-        colorIndexes = Array(0..<2).flatMap { [$0,$0] }
-        colorIndexes.shuffle()
-        revealed = Array(repeating: false, count: 4)
-        matched = Array(repeating: false, count: 4)
-        firstIndex = nil
-        secondIndex = nil
-        isBusy = false
-        score = 0
-        statusText = "Match the Colors"
-        time = 0
-        
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            time += 1
-        }
-    }
-    
-    func cardColor(_ index: Int) -> Color {
-        (revealed[index] || matched[index]) ? colors[colorIndexes[index]] : .gray
-    }
-    
-    func cardTapped(_ index: Int) {
-        if isBusy || matched[index] { return }
-        revealed[index] = true
-        
-        if firstIndex == nil { firstIndex = index }
-        else { secondIndex = index; checkMatch() }
-    }
-    
-    func checkMatch() {
-        isBusy = true
-        if colorIndexes[firstIndex!] == colorIndexes[secondIndex!] {
-            matched[firstIndex!] = true
-            matched[secondIndex!] = true
-            score += 10
-            statusText = "Matched ✅ (+10)"
-            
-            if matched.allSatisfy({ $0 }) {
-                statusText = "🎉 You Win! Score: \(score)"
-                timer?.invalidate()
-                scoreManager.add(mode: "Easy", score: score, time: time)
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { resetSelection() }
-        } else {
-            statusText = "Not Matched ❌"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                revealed[firstIndex!] = false
-                revealed[secondIndex!] = false
-                resetSelection()
-            }
-        }
-    }
-    
-    func resetSelection() { firstIndex = nil; secondIndex = nil; isBusy = false }
 }
 
-// MARK: - Medium Game 4x4
+// MARK: - MEDIUM GAME 5x5
 struct MediumGameView: View {
-    let colors: [Color] = [.red, .blue, .green, .yellow, .purple, .orange, .pink, .cyan]
-    
+    let colors: [Color] = [.red, .blue, .green, .yellow, .purple, .orange, .pink, .cyan, .mint, .indigo, .teal, .brown]
+
     @State private var colorIndexes: [Int] = []
-    @State private var revealed = Array(repeating: false, count: 16)
-    @State private var matched = Array(repeating: false, count: 16)
+    @State private var revealed = Array(repeating: false, count: 25)
+    @State private var matched = Array(repeating: false, count: 25)
     @State private var firstIndex: Int? = nil
     @State private var secondIndex: Int? = nil
     @State private var isBusy = false
-    @State private var statusText = "Match the Colors"
     @State private var score = 0
-    
     @State private var time = 0
+    @State private var hintUsed = false
     @State private var timer: Timer? = nil
-    
+    @State private var showWin = false
+
     @ObservedObject var scoreManager: ScoreManager
-    
+
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Score: \(score)").font(.title3).fontWeight(.bold)
-            Text("Time: \(time)s").font(.headline)
-            Text(statusText).font(.headline)
-            
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 10) {
-                ForEach(0..<16, id: \.self) { index in
-                    Rectangle()
-                        .fill(cardColor(index))
-                        .frame(height: 60)
-                        .cornerRadius(10)
-                        .onTapGesture { cardTapped(index) }
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.black))
-                }
-            }
-            
-            Button("Restart Game") { setupGame() }
-        }
-        .padding()
-        .onAppear { setupGame() }
-        .onDisappear { timer?.invalidate() }
+        GameView(
+            title: "Medium Mode",
+            grid: 5,
+            totalCards: 25,
+            pairCount: 12,
+            scoreValue: 15,
+            colors: colors,
+            colorIndexes: $colorIndexes,
+            revealed: $revealed,
+            matched: $matched,
+            firstIndex: $firstIndex,
+            secondIndex: $secondIndex,
+            busy: $isBusy,
+            score: $score,
+            time: $time,
+            hintUsed: $hintUsed,
+            timer: $timer,
+            showWin: $showWin,
+            scoreManager: scoreManager
+        )
     }
-    
-    func setupGame() {
-        colorIndexes = Array(0..<8).flatMap { [$0,$0] }
-        colorIndexes.shuffle()
-        revealed = Array(repeating: false, count: 16)
-        matched = Array(repeating: false, count: 16)
-        firstIndex = nil
-        secondIndex = nil
-        isBusy = false
-        score = 0
-        statusText = "Match the Colors"
-        time = 0
-        
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            time += 1
-        }
-    }
-    
-    func cardColor(_ index: Int) -> Color {
-        (revealed[index] || matched[index]) ? colors[colorIndexes[index]] : .gray
-    }
-    
-    func cardTapped(_ index: Int) {
-        if isBusy || matched[index] { return }
-        revealed[index] = true
-        if firstIndex == nil { firstIndex = index }
-        else { secondIndex = index; checkMatch() }
-    }
-    
-    func checkMatch() {
-        isBusy = true
-        if colorIndexes[firstIndex!] == colorIndexes[secondIndex!] {
-            matched[firstIndex!] = true
-            matched[secondIndex!] = true
-            score += 15
-            statusText = "Matched ✅ (+15)"
-            
-            if matched.allSatisfy({ $0 }) {
-                statusText = "🎉 Medium Mode Cleared! Score: \(score)"
-                timer?.invalidate()
-                scoreManager.add(mode: "Medium", score: score, time: time)
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { resetSelection() }
-        } else {
-            statusText = "Not Matched ❌"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                revealed[firstIndex!] = false
-                revealed[secondIndex!] = false
-                resetSelection()
-            }
-        }
-    }
-    
-    func resetSelection() { firstIndex = nil; secondIndex = nil; isBusy = false }
 }
 
-// MARK: - Hard Game 6x6
+// MARK: - HARD GAME 7x7
 struct HardGameView: View {
     let colors: [Color] = [
-        .red, .blue, .green, .yellow, .purple, .orange,
-        .pink, .cyan, .mint, .indigo, .teal, .brown,
-        .gray, .black, .red.opacity(0.7), .blue.opacity(0.7),
-        .green.opacity(0.7), .yellow.opacity(0.7)
+        .red, .blue, .green, .yellow, .purple, .orange, .pink, .cyan, .mint, .indigo, .teal, .brown,
+        .gray, .black, .red.opacity(0.7), .blue.opacity(0.7), .green.opacity(0.7), .yellow.opacity(0.7),
+        .purple.opacity(0.7), .orange.opacity(0.7), .pink.opacity(0.7), .cyan.opacity(0.7),
+        .mint.opacity(0.7), .indigo.opacity(0.7)
     ]
-    
+
     @State private var colorIndexes: [Int] = []
-    @State private var revealed = Array(repeating: false, count: 36)
-    @State private var matched = Array(repeating: false, count: 36)
+    @State private var revealed = Array(repeating: false, count: 49)
+    @State private var matched = Array(repeating: false, count: 49)
     @State private var firstIndex: Int? = nil
     @State private var secondIndex: Int? = nil
     @State private var isBusy = false
-    @State private var statusText = "Match the Colors"
     @State private var score = 0
-    
     @State private var time = 0
+    @State private var hintUsed = false
     @State private var timer: Timer? = nil
-    
+    @State private var showWin = false
+
     @ObservedObject var scoreManager: ScoreManager
-    
+
     var body: some View {
-        VStack(spacing: 15) {
-            Text("Score: \(score)").font(.title3).fontWeight(.bold)
-            Text("Time: \(time)s").font(.headline)
-            Text(statusText).font(.headline)
-            
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 8) {
-                ForEach(0..<36, id: \.self) { index in
-                    Rectangle()
-                        .fill(cardColor(index))
-                        .frame(height: 40)
-                        .cornerRadius(6)
-                        .onTapGesture { cardTapped(index) }
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.black, lineWidth: 0.8))
+        GameView(
+            title: "Hard Mode",
+            grid: 7,
+            totalCards: 49,
+            pairCount: 24,
+            scoreValue: 20,
+            colors: colors,
+            colorIndexes: $colorIndexes,
+            revealed: $revealed,
+            matched: $matched,
+            firstIndex: $firstIndex,
+            secondIndex: $secondIndex,
+            busy: $isBusy,
+            score: $score,
+            time: $time,
+            hintUsed: $hintUsed,
+            timer: $timer,
+            showWin: $showWin,
+            scoreManager: scoreManager
+        )
+    }
+}
+
+// MARK: - GENERIC GAME VIEW WITH WIN OVERLAY
+struct GameView: View {
+    let title: String
+    let grid: Int
+    let totalCards: Int
+    let pairCount: Int
+    let scoreValue: Int
+    let colors: [Color]
+
+    @Binding var colorIndexes: [Int]
+    @Binding var revealed: [Bool]
+    @Binding var matched: [Bool]
+    @Binding var firstIndex: Int?
+    @Binding var secondIndex: Int?
+    @Binding var busy: Bool
+    @Binding var score: Int
+    @Binding var time: Int
+    @Binding var hintUsed: Bool
+    @Binding var timer: Timer?
+    @Binding var showWin: Bool
+
+    var scoreManager: ScoreManager
+
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Color.purple.opacity(0.2), Color.blue.opacity(0.15)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                .ignoresSafeArea()
+
+            VStack(spacing: 12) {
+                Text(title).font(.largeTitle.bold())
+                Text("Score: \(score) • ⏱ \(time)s").foregroundColor(.secondary)
+                Text(!showWin ? "Match the Colors" : "").font(.title3.weight(.semibold))
+
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: grid), spacing: 10) {
+                    ForEach(0..<totalCards, id: \.self) { i in
+                        GameCardView(
+                            color: cardColor(i),
+                            flipped: revealed[i] || matched[i],
+                            height: grid == 3 ? 90 : (grid == 5 ? 60 : 40)
+                        )
+                        .onTapGesture { tap(i) }
+                    }
                 }
+
+                HStack(spacing: 16) {
+                    Button("💡 Hint", action: hint).disabled(hintUsed)
+                    Button("🔄 Restart", action: setup)
+                }
+                .buttonStyle(.borderedProminent)
             }
-            
-            Button("Restart Game") { setupGame() }
+            .padding()
+
+            // 🎉 WIN OVERLAY
+            if showWin {
+                Color.black.opacity(0.6).ignoresSafeArea()
+                VStack(spacing: 20) {
+                    Text("🎉 You Won!").font(.system(size: 36, weight: .bold)).foregroundColor(.white)
+                    Text("Score: \(score)\nTime: \(time)s")
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(.white)
+                        .font(.title2)
+                    Button("🏁 Play Again") {
+                        showWin = false
+                        setup()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding()
+                .background(RoundedRectangle(cornerRadius: 20).fill(Color.purple))
+                .shadow(radius: 8)
+            }
         }
-        .padding()
-        .onAppear { setupGame() }
+        .onAppear(perform: setup)
         .onDisappear { timer?.invalidate() }
     }
-    
-    func setupGame() {
-        colorIndexes = Array(0..<18).flatMap { [$0,$0] }
+
+    func setup() {
+        colorIndexes = Array(0..<pairCount).flatMap { [$0, $0] } + [pairCount]
         colorIndexes.shuffle()
-        revealed = Array(repeating: false, count: 36)
-        matched = Array(repeating: false, count: 36)
-        firstIndex = nil
-        secondIndex = nil
-        isBusy = false
-        score = 0
-        statusText = "Match the Colors"
-        time = 0
-        
+        revealed = Array(repeating: false, count: colorIndexes.count)
+        matched = Array(repeating: false, count: colorIndexes.count)
+        if let free = colorIndexes.firstIndex(of: pairCount) { matched[free] = true }
+        firstIndex = nil; secondIndex = nil; busy = false; score = 0; time = 0; hintUsed = false; showWin = false
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            time += 1
-        }
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in time += 1 }
     }
-    
-    func cardColor(_ index: Int) -> Color {
-        (revealed[index] || matched[index]) ? colors[colorIndexes[index]] : .gray
+
+    func cardColor(_ i: Int) -> Color {
+        if matched[i] && colorIndexes[i] == pairCount { return .gray.opacity(0.3) }
+        return (revealed[i] || matched[i]) ? colors[colorIndexes[i]] : .gray.opacity(0.4)
     }
-    
-    func cardTapped(_ index: Int) {
-        if isBusy || matched[index] || revealed[index] { return }
-        revealed[index] = true
-        if firstIndex == nil { firstIndex = index }
-        else { secondIndex = index; checkMatch() }
+
+    func tap(_ i: Int) {
+        if busy || revealed[i] || matched[i] { return }
+        revealed[i] = true
+        if firstIndex == nil { firstIndex = i }
+        else { secondIndex = i; check() }
     }
-    
-    func checkMatch() {
-        isBusy = true
+
+    func check() {
+        busy = true
         if colorIndexes[firstIndex!] == colorIndexes[secondIndex!] {
             matched[firstIndex!] = true
             matched[secondIndex!] = true
-            score += 20
-            statusText = "Matched ✅ (+20)"
-            
+            score += scoreValue
             if matched.allSatisfy({ $0 }) {
-                statusText = "🔥 HARD MODE CLEARED! Score: \(score)"
                 timer?.invalidate()
-                scoreManager.add(mode: "Hard", score: score, time: time)
+                showWin = true
+                scoreManager.add(mode: title, score: score, time: time)
             }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { resetSelection() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { reset() }
         } else {
-            statusText = "Not Matched ❌"
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                 revealed[firstIndex!] = false
                 revealed[secondIndex!] = false
-                resetSelection()
+                reset()
             }
         }
     }
-    
-    func resetSelection() { firstIndex = nil; secondIndex = nil; isBusy = false }
+
+    func reset() { firstIndex = nil; secondIndex = nil; busy = false }
+
+    func hint() {
+        hintUsed = true
+        for i in 0..<revealed.count where !matched[i] { revealed[i] = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            for i in 0..<revealed.count where !matched[i] { revealed[i] = false }
+        }
+    }
 }
 
-// MARK: - Instructions Page
-// MARK: - Creative Instructions Page
+// MARK: - INSTRUCTIONS
 struct InstructionsView: View {
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 25) {
-                
-                // 🎨 Title
-                Text("🎮 Color Cube Memory Game")
+            VStack(alignment: .leading, spacing: 30) {
+                Text("🎨 Color Cube Memory Game")
                     .font(.system(size: 36, weight: .bold, design: .rounded))
                     .foregroundColor(.purple)
-                
-                Text("Sharpen your memory and have fun! 🧠✨")
+                Text("Challenge your memory, improve focus, and have fun matching colorful cubes! 🧠✨")
                     .font(.title3)
                     .foregroundColor(.secondary)
-                
-                // 📝 How to Play Section
                 SectionCard(title: "📝 How to Play", items: [
-                    "Tap a cube to reveal its hidden color 🎨",
-                    "Tap a second cube to find its matching color 🔍",
-                    "If both colors match, they stay open ✅",
-                    "If they don’t match, they flip back ❌",
-                    "Complete all pairs to clear the level 🏆"
+                    "Select a difficulty: Easy (3x3), Medium (5x5), or Hard (7x7).",
+                    "Tap any cube to reveal its hidden color 🎨.",
+                    "Tap a second cube to find its matching color 🔍.",
+                    "If the colors match, they stay revealed ✅.",
+                    "If they don't match, they flip back ❌.",
+                    "Keep finding pairs until all cubes are matched 🏆."
                 ])
-                
-                // ⭐ Scoring System Section
+                SectionCard(title: "💡 Hint Feature", items: [
+                    "You can use the Hint button once per game.",
+                    "All unmatched cubes will briefly flip to show their colors 👀.",
+                    "Use hints strategically to improve your score and finish faster."
+                ])
                 SectionCard(title: "⭐ Scoring System", items: [
-                    "Each correct match gives points ➕",
-                    "Higher difficulty = more points 🔥",
+                    "Easy: +10 points per pair",
+                    "Medium: +15 points per pair",
+                    "Hard: +20 points per pair",
                     "No points are deducted for wrong matches ❌",
-                    "Aim for the highest score possible 🏅"
+                    "Aim for the highest score possible!"
                 ])
-                
-                // ⏱️ Time Challenge Section
                 SectionCard(title: "⏱️ Time Challenge", items: [
-                    "Complete levels faster for personal records ⚡",
-                    "Track your time in the History tab 📊",
-                    "Challenge your friends and beat their scores 🎯"
+                    "Each game tracks your total time ⚡.",
+                    "Finish faster to achieve better records.",
+                    "Time is displayed at the top along with your current score."
                 ])
-                
-                // 🏆 Goal Section
-                SectionCard(title: "🏆 Goal", items: [
-                    "Match all the color pairs in each level",
-                    "Improve memory, focus, and reflexes 🧠💡",
-                    "Unlock higher levels for bigger challenges 🧩"
+                SectionCard(title: "📊 Score History", items: [
+                    "After each game, your score and time are saved automatically.",
+                    "Click the Score History tab at the bottom to view past scores.",
+                    "Track your progress for each difficulty level."
                 ])
-                
+                SectionCard(title: "🎯 Goal of the Game", items: [
+                    "Match all color pairs in the selected level.",
+                    "Finish with the highest score possible.",
+                    "Use hints wisely to improve performance.",
+                    "Have fun and enjoy the colorful challenges!"
+                ])
                 Spacer()
             }
             .padding()
         }
-        .background(LinearGradient(colors: [Color.purple.opacity(0.1), Color.blue.opacity(0.05)], startPoint: .top, endPoint: .bottom))
+        .background(
+            LinearGradient(
+                colors: [Color.purple.opacity(0.1), Color.blue.opacity(0.05)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
     }
 }
 
-// MARK: - Section Card View
 struct SectionCard: View {
     var title: String
     var items: [String]
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
@@ -485,9 +457,9 @@ struct SectionCard: View {
                 .padding()
                 .background(Color.blue)
                 .cornerRadius(12)
-            
+
             ForEach(items, id: \.self) { item in
-                HStack(alignment: .top) {
+                HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "circle.fill")
                         .font(.system(size: 8))
                         .foregroundColor(.blue)
@@ -505,9 +477,15 @@ struct SectionCard: View {
     }
 }
 
-// MARK: - Preview
+// MARK: - PREVIEWS
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
         ContentView()
+    }
+}
+
+struct InstructionsView_Previews: PreviewProvider {
+    static var previews: some View {
+        InstructionsView()
     }
 }
