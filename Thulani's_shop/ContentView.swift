@@ -7,9 +7,16 @@
 import SwiftUI
 import Combine
 
+// MARK: - 🔹 ADDED: Player Manager
+class PlayerManager: ObservableObject {
+    @Published var playerName: String = ""
+    @Published var isPlayerSet: Bool = false
+}
+
 // MARK: - Score History
 struct ScoreRecord: Identifiable {
     let id = UUID()
+    let player: String        // 🔹 ADDED: store player name
     let mode: String
     let score: Int
     let time: Int
@@ -19,9 +26,10 @@ struct ScoreRecord: Identifiable {
 class ScoreManager: ObservableObject {
     @Published var history: [ScoreRecord] = []
 
-    func add(mode: String, score: Int, time: Int) {
+    // 🔹 ADDED: include player name when saving score
+    func add(player: String, mode: String, score: Int, time: Int) {
         history.insert(
-            ScoreRecord(mode: mode, score: score, time: time, date: Date()),
+            ScoreRecord(player: player, mode: mode, score: score, time: time, date: Date()),
             at: 0
         )
     }
@@ -30,38 +38,56 @@ class ScoreManager: ObservableObject {
 // MARK: - MAIN APP
 struct ContentView: View {
     @StateObject var scoreManager = ScoreManager()
+    // 🔹 ADDED: player manager
+    @StateObject var playerManager = PlayerManager()
 
     var body: some View {
         TabView {
             NavigationStack {
-                ZStack {
-                    // 🎨 Main Menu Background
-                    LinearGradient(
-                        colors: [Color.purple.opacity(0.5), Color.blue.opacity(0.3)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    .ignoresSafeArea()
+                // 🔹 ADDED: check if player is set
+                if !playerManager.isPlayerSet {
+                    PlayerEntryView(playerManager: playerManager)
+                } else {
+                    ZStack {
+                        // 🎨 Main Menu Background
+                        LinearGradient(
+                            colors: [Color.purple.opacity(0.5), Color.blue.opacity(0.3)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        .ignoresSafeArea()
 
-                    VStack(spacing: 30) {
-                        Spacer()
-                        Text("🎨 Color Cube Matching Game")
-                            .font(.largeTitle.bold())
-                            .multilineTextAlignment(.center)
-                            .foregroundColor(.white)
-                            .shadow(radius: 5)
+                        VStack(spacing: 30) {
+                            Spacer()
+                            // 🔹 ADDED: Welcome message
+                            Text("👋 Welcome, \(playerManager.playerName)")
+                                .font(.title2.bold())
+                                .foregroundColor(.white)
 
-                        VStack(spacing: 18) {
-                            NavigationLink("Easy") { EasyGameView(scoreManager: scoreManager) }
-                            NavigationLink("Medium") { MediumGameView(scoreManager: scoreManager) }
-                            NavigationLink("Hard") { HardGameView(scoreManager: scoreManager) }
-                            NavigationLink("📘 How to Play") { InstructionsView() }
+                            Text("🎨 Color Cube Matching Game")
+                                .font(.largeTitle.bold())
+                                .multilineTextAlignment(.center)
+                                .foregroundColor(.white)
+                                .shadow(radius: 5)
+
+                            VStack(spacing: 18) {
+                                NavigationLink("Easy") { EasyGameView(scoreManager: scoreManager, playerManager: playerManager) }
+                                NavigationLink("Medium") { MediumGameView(scoreManager: scoreManager, playerManager: playerManager) }
+                                NavigationLink("Hard") { HardGameView(scoreManager: scoreManager, playerManager: playerManager) }
+                                NavigationLink("📘 How to Play") { InstructionsView() }
+
+                                // 🔹 ADDED: Button to change player
+                                Button("🔁 Change Player") {
+                                    playerManager.isPlayerSet = false
+                                    playerManager.playerName = ""
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                            Spacer()
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        Spacer()
+                        .padding()
                     }
-                    .padding()
                 }
             }
             .tabItem { Label("Play", systemImage: "gamecontroller") }
@@ -69,6 +95,31 @@ struct ContentView: View {
             NavigationStack { ScoreHistoryView(scoreManager: scoreManager) }
                 .tabItem { Label("History", systemImage: "list.bullet.rectangle") }
         }
+    }
+}
+
+// MARK: - 🔹 ADDED: Player Entry View
+struct PlayerEntryView: View {
+    @ObservedObject var playerManager: PlayerManager
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Spacer()
+            Text("🎮 Enter Player Name")
+                .font(.largeTitle.bold())
+            TextField("Your Name", text: $playerManager.playerName)
+                .textFieldStyle(.roundedBorder)
+                .padding(.horizontal)
+            Button("Start Game") {
+                if !playerManager.playerName.isEmpty {
+                    playerManager.isPlayerSet = true
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(playerManager.playerName.isEmpty)
+            Spacer()
+        }
+        .padding()
     }
 }
 
@@ -89,6 +140,8 @@ struct ScoreHistoryView: View {
             } else {
                 List(scoreManager.history) { record in
                     VStack(alignment: .leading) {
+                        // 🔹 ADDED: show player name
+                        Text("👤 \(record.player)").font(.headline)
                         Text("\(record.mode) Mode - Score: \(record.score) - Time: \(record.time)s")
                         Text("Date: \(record.date.formatted(date: .numeric, time: .shortened))")
                             .font(.caption)
@@ -130,14 +183,14 @@ struct EasyGameView: View {
     @State private var firstIndex: Int? = nil
     @State private var secondIndex: Int? = nil
     @State private var isBusy = false
-
     @State private var score = 0
     @State private var time = 0
-    @State private var timer: Timer?
     @State private var hintUsed = false
     @State private var showWin = false
+    @State private var timer: Timer? = nil
 
     @ObservedObject var scoreManager: ScoreManager
+    @ObservedObject var playerManager: PlayerManager // 🔹 ADDED
 
     var body: some View {
         GameView(
@@ -158,7 +211,8 @@ struct EasyGameView: View {
             hintUsed: $hintUsed,
             timer: $timer,
             showWin: $showWin,
-            scoreManager: scoreManager
+            scoreManager: scoreManager,
+            playerManager: playerManager // 🔹 ADDED
         )
     }
 }
@@ -180,6 +234,7 @@ struct MediumGameView: View {
     @State private var showWin = false
 
     @ObservedObject var scoreManager: ScoreManager
+    @ObservedObject var playerManager: PlayerManager // 🔹 ADDED
 
     var body: some View {
         GameView(
@@ -200,7 +255,8 @@ struct MediumGameView: View {
             hintUsed: $hintUsed,
             timer: $timer,
             showWin: $showWin,
-            scoreManager: scoreManager
+            scoreManager: scoreManager,
+            playerManager: playerManager // 🔹 ADDED
         )
     }
 }
@@ -227,6 +283,7 @@ struct HardGameView: View {
     @State private var showWin = false
 
     @ObservedObject var scoreManager: ScoreManager
+    @ObservedObject var playerManager: PlayerManager // 🔹 ADDED
 
     var body: some View {
         GameView(
@@ -247,7 +304,8 @@ struct HardGameView: View {
             hintUsed: $hintUsed,
             timer: $timer,
             showWin: $showWin,
-            scoreManager: scoreManager
+            scoreManager: scoreManager,
+            playerManager: playerManager // 🔹 ADDED
         )
     }
 }
@@ -274,6 +332,7 @@ struct GameView: View {
     @Binding var showWin: Bool
 
     var scoreManager: ScoreManager
+    var playerManager: PlayerManager // 🔹 ADDED
 
     var body: some View {
         ZStack {
@@ -304,7 +363,6 @@ struct GameView: View {
             }
             .padding()
 
-            // 🎉 WIN OVERLAY
             if showWin {
                 Color.black.opacity(0.6).ignoresSafeArea()
                 VStack(spacing: 20) {
@@ -329,7 +387,7 @@ struct GameView: View {
     }
 
     func setup() {
-        colorIndexes = Array(0..<pairCount).flatMap { [$0, $0] } + [pairCount]
+        colorIndexes = Array(0..<pairCount).flatMap { [$0,$0] } + [pairCount]
         colorIndexes.shuffle()
         revealed = Array(repeating: false, count: colorIndexes.count)
         matched = Array(repeating: false, count: colorIndexes.count)
@@ -360,7 +418,8 @@ struct GameView: View {
             if matched.allSatisfy({ $0 }) {
                 timer?.invalidate()
                 showWin = true
-                scoreManager.add(mode: title, score: score, time: time)
+                // 🔹 ADDED: save player name with score
+                scoreManager.add(player: playerManager.playerName, mode: title, score: score, time: time)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { reset() }
         } else {
@@ -422,70 +481,25 @@ struct InstructionsView: View {
                 SectionCard(title: "📊 Score History", items: [
                     "After each game, your score and time are saved automatically.",
                     "Click the Score History tab at the bottom to view past scores.",
-                    "Track your progress for each difficulty level."
+                    "Track your improvement and aim for the leaderboard! 🏅"
                 ])
-                SectionCard(title: "🎯 Goal of the Game", items: [
-                    "Match all color pairs in the selected level.",
-                    "Finish with the highest score possible.",
-                    "Use hints wisely to improve performance.",
-                    "Have fun and enjoy the colorful challenges!"
-                ])
-                Spacer()
             }
             .padding()
         }
-        .background(
-            LinearGradient(
-                colors: [Color.purple.opacity(0.1), Color.blue.opacity(0.05)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
     }
 }
 
 struct SectionCard: View {
-    var title: String
-    var items: [String]
-
+    let title: String
+    let items: [String]
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.title2)
-                .fontWeight(.bold)
-                .foregroundColor(.white)
-                .padding()
-                .background(Color.blue)
-                .cornerRadius(12)
-
+            Text(title).font(.title2.bold())
             ForEach(items, id: \.self) { item in
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "circle.fill")
-                        .font(.system(size: 8))
-                        .foregroundColor(.blue)
-                        .padding(.top, 6)
-                    Text(item)
-                        .font(.body)
-                        .foregroundColor(.primary)
-                }
+                Text("• \(item)")
             }
         }
         .padding()
-        .background(Color.white.opacity(0.9))
-        .cornerRadius(15)
-        .shadow(color: .gray.opacity(0.3), radius: 5, x: 0, y: 3)
-    }
-}
-
-// MARK: - PREVIEWS
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
-    }
-}
-
-struct InstructionsView_Previews: PreviewProvider {
-    static var previews: some View {
-        InstructionsView()
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.purple.opacity(0.1)))
     }
 }
