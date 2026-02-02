@@ -99,27 +99,83 @@ struct ContentView: View {
 }
 
 // MARK: - 🔹 ADDED: Player Entry View
+// MARK: - 🔹 ADDED: Player Entry View (UI Enhanced Only)
 struct PlayerEntryView: View {
     @ObservedObject var playerManager: PlayerManager
 
     var body: some View {
-        VStack(spacing: 20) {
-            Spacer()
-            Text("🎮 Enter Player Name")
-                .font(.largeTitle.bold())
-            TextField("Your Name", text: $playerManager.playerName)
-                .textFieldStyle(.roundedBorder)
-                .padding(.horizontal)
-            Button("Start Game") {
-                if !playerManager.playerName.isEmpty {
-                    playerManager.isPlayerSet = true
+        ZStack {
+            // 🎨 Background
+            LinearGradient(
+                colors: [Color.purple.opacity(0.6), Color.blue.opacity(0.5)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 30) {
+                Spacer()
+
+                // 🎮 Game Title
+                VStack(spacing: 8) {
+                    Text("🎨 Color Cube Game")
+                        .font(.system(size: 36, weight: .bold))
+                        .foregroundColor(.white)
+
+                    Text("Test your memory & focus 🧠")
+                        .font(.title3)
+                        .foregroundColor(.white.opacity(0.9))
                 }
+
+                // 🧾 Card Container
+                VStack(spacing: 20) {
+                    Text("Enter Player Name")
+                        .font(.title2.bold())
+
+                    HStack {
+                        Image(systemName: "person.fill")
+                            .foregroundColor(.purple)
+
+                        TextField("Your Name", text: $playerManager.playerName)
+                            .textInputAutocapitalization(.words)
+                            .disableAutocorrection(true)
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.gray.opacity(0.15))
+                    )
+
+                    Button {
+                        if !playerManager.playerName.isEmpty {
+                            playerManager.isPlayerSet = true
+                        }
+                    } label: {
+                        Text("🚀 Start Game")
+                            .font(.title3.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.purple)
+                    .disabled(playerManager.playerName.isEmpty)
+                }
+                .padding(25)
+                .background(
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(Color.white)
+                        .shadow(radius: 10)
+                )
+                .padding(.horizontal, 30)
+
+                Spacer()
+
+                // 👣 Footer
+                Text("Good luck & have fun! 🎯")
+                    .foregroundColor(.white.opacity(0.9))
+                    .padding(.bottom, 20)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(playerManager.playerName.isEmpty)
-            Spacer()
         }
-        .padding()
     }
 }
 
